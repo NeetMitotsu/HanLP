@@ -11,10 +11,13 @@
 package com.hankcs.hanlp.mining.word2vec;
 
 
+import com.hankcs.hanlp.dictionary.stopword.CoreStopWordDictionary;
+import com.hankcs.hanlp.seg.Segment;
 import com.hankcs.hanlp.seg.common.Term;
 import com.hankcs.hanlp.tokenizer.NotionalTokenizer;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 文档向量模型
@@ -24,11 +27,26 @@ import java.util.*;
 public class DocVectorModel extends AbstractVectorModel<Integer>
 {
     private final WordVectorModel wordVectorModel;
+    /**
+     * 分词器
+     */
+    private Segment segment;
+    /**
+     * 是否使用CoreStopwordDictionary的过滤器
+     */
+    private boolean filter;
 
     public DocVectorModel(WordVectorModel wordVectorModel)
     {
+        this(wordVectorModel, NotionalTokenizer.SEGMENT, true);
+    }
+
+    public DocVectorModel(WordVectorModel wordVectorModel, Segment segment, boolean filter)
+    {
         super();
         this.wordVectorModel = wordVectorModel;
+        this.segment = segment;
+        this.filter = filter;
     }
 
     /**
@@ -58,6 +76,17 @@ public class DocVectorModel extends AbstractVectorModel<Integer>
         return queryNearest(query, 10);
     }
 
+    /**
+     * 查询最相似的前n个文档
+     *
+     * @param query 查询语句（或者说一个文档的内容）
+     * @return
+     */
+    public List<Map.Entry<Integer, Float>> nearest(String query, int n)
+    {
+        return queryNearest(query, n);
+    }
+
 
     /**
      * 将一个文档转为向量
@@ -68,7 +97,11 @@ public class DocVectorModel extends AbstractVectorModel<Integer>
     public Vector query(String content)
     {
         if (content == null || content.length() == 0) return null;
-        List<Term> termList = NotionalTokenizer.segment(content);
+        List<Term> termList = segment.seg(content);
+        if (filter)
+        {
+            CoreStopWordDictionary.apply(termList);
+        }
         Vector result = new Vector(dimension());
         int n = 0;
         for (Term term : termList)
@@ -97,6 +130,7 @@ public class DocVectorModel extends AbstractVectorModel<Integer>
 
     /**
      * 文档相似度计算
+     *
      * @param what
      * @param with
      * @return
@@ -108,5 +142,35 @@ public class DocVectorModel extends AbstractVectorModel<Integer>
         Vector B = query(with);
         if (B == null) return -1f;
         return A.cosineForUnitVector(B);
+    }
+
+    public Segment getSegment()
+    {
+        return segment;
+    }
+
+    public void setSegment(Segment segment)
+    {
+        this.segment = segment;
+    }
+
+    /**
+     * 是否激活了停用词过滤器
+     *
+     * @return
+     */
+    public boolean isFilterEnabled()
+    {
+        return filter;
+    }
+
+    /**
+     * 激活/关闭停用词过滤器
+     *
+     * @param filter
+     */
+    public void enableFilter(boolean filter)
+    {
+        this.filter = filter;
     }
 }

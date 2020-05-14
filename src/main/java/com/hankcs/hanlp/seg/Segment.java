@@ -91,7 +91,7 @@ public abstract class Segment
             nCurType = charTypeArray[pCur - start];
 
             if (nCurType == CharType.CT_CHINESE || nCurType == CharType.CT_INDEX ||
-                    nCurType == CharType.CT_DELIMITER || nCurType == CharType.CT_OTHER)
+                nCurType == CharType.CT_DELIMITER || nCurType == CharType.CT_OTHER)
             {
                 String single = String.valueOf(charArray[pCur]);
                 if (single.length() != 0)
@@ -169,9 +169,9 @@ public abstract class Segment
                 // 浮点数识别
                 if (preType == CharType.CT_NUM && "，,．.".indexOf(charArray[offsetAtom]) != -1)
                 {
-                    if (offsetAtom+1 < end)
+                    if (offsetAtom + 1 < end)
                     {
-                        int nextType = CharType.get(charArray[offsetAtom+1]);
+                        int nextType = CharType.get(charArray[offsetAtom + 1]);
                         if (nextType == CharType.CT_NUM)
                         {
                             continue;
@@ -191,16 +191,28 @@ public abstract class Segment
 
     /**
      * 使用用户词典合并粗分结果
+     *
      * @param vertexList 粗分结果
      * @return 合并后的结果
      */
     protected static List<Vertex> combineByCustomDictionary(List<Vertex> vertexList)
     {
-        assert vertexList.size() > 2 : "vertexList至少包含 始##始 和 末##末";
+        return combineByCustomDictionary(vertexList, CustomDictionary.dat);
+    }
+
+    /**
+     * 使用用户词典合并粗分结果
+     *
+     * @param vertexList 粗分结果
+     * @param dat        用户自定义词典
+     * @return 合并后的结果
+     */
+    protected static List<Vertex> combineByCustomDictionary(List<Vertex> vertexList, DoubleArrayTrie<CoreDictionary.Attribute> dat)
+    {
+        assert vertexList.size() >= 2 : "vertexList至少包含 始##始 和 末##末";
         Vertex[] wordNet = new Vertex[vertexList.size()];
         vertexList.toArray(wordNet);
         // DAT合并
-        DoubleArrayTrie<CoreDictionary.Attribute> dat = CustomDictionary.dat;
         int length = wordNet.length - 1; // 跳过首尾
         for (int i = 1; i < length; ++i)
         {
@@ -270,13 +282,27 @@ public abstract class Segment
 
     /**
      * 使用用户词典合并粗分结果，并将用户词语收集到全词图中
+     *
      * @param vertexList 粗分结果
      * @param wordNetAll 收集用户词语到全词图中
      * @return 合并后的结果
      */
     protected static List<Vertex> combineByCustomDictionary(List<Vertex> vertexList, final WordNet wordNetAll)
     {
-        List<Vertex> outputList = combineByCustomDictionary(vertexList);
+        return combineByCustomDictionary(vertexList, CustomDictionary.dat, wordNetAll);
+    }
+
+    /**
+     * 使用用户词典合并粗分结果，并将用户词语收集到全词图中
+     *
+     * @param vertexList 粗分结果
+     * @param dat        用户自定义词典
+     * @param wordNetAll 收集用户词语到全词图中
+     * @return 合并后的结果
+     */
+    protected static List<Vertex> combineByCustomDictionary(List<Vertex> vertexList, DoubleArrayTrie<CoreDictionary.Attribute> dat, final WordNet wordNetAll)
+    {
+        List<Vertex> outputList = combineByCustomDictionary(vertexList, dat);
         int line = 0;
         for (final Vertex vertex : outputList)
         {
@@ -301,10 +327,11 @@ public abstract class Segment
 
     /**
      * 将连续的词语合并为一个
+     *
      * @param wordNet 词图
-     * @param start 起始下标（包含）
-     * @param end 结束下标（不包含）
-     * @param value 新的属性
+     * @param start   起始下标（包含）
+     * @param end     结束下标（不包含）
+     * @param value   新的属性
      */
     private static void combineWords(Vertex[] wordNet, int start, int end, CoreDictionary.Attribute value)
     {
@@ -322,12 +349,64 @@ public abstract class Segment
                 sbTerm.append(realWord);
                 wordNet[j] = null;
             }
-            wordNet[start] = new Vertex(sbTerm.toString(), value);
+            String realWord = sbTerm.toString();
+            wordNet[start] = new Vertex(realWord, realWord, value);
         }
     }
 
     /**
+     * 将一条路径转为最终结果
+     *
+     * @param vertexList
+     * @param offsetEnabled 是否计算offset
+     * @return
+     */
+    protected static List<Term> convert(List<Vertex> vertexList, boolean offsetEnabled)
+    {
+        assert vertexList != null;
+        assert vertexList.size() >= 2 : "这条路径不应当短于2" + vertexList.toString();
+        int length = vertexList.size() - 2;
+        List<Term> resultList = new ArrayList<Term>(length);
+        Iterator<Vertex> iterator = vertexList.iterator();
+        iterator.next();
+        if (offsetEnabled)
+        {
+            int offset = 0;
+            for (int i = 0; i < length; ++i)
+            {
+                Vertex vertex = iterator.next();
+                Term term = convert(vertex);
+                term.offset = offset;
+                offset += term.length();
+                resultList.add(term);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; ++i)
+            {
+                Vertex vertex = iterator.next();
+                Term term = convert(vertex);
+                resultList.add(term);
+            }
+        }
+        return resultList;
+    }
+
+    /**
+     * 将节点转为term
+     *
+     * @param vertex
+     * @return
+     */
+    static Term convert(Vertex vertex)
+    {
+        return new Term(vertex.realWord, vertex.guessNature());
+    }
+
+    /**
      * 合并数字
+     *
      * @param termList
      */
     protected void mergeNumberQuantifier(List<Vertex> termList, WordNet wordNetAll, Config config)
@@ -388,10 +467,11 @@ public abstract class Segment
 
     /**
      * 将一个词语从词网中彻底抹除
-     * @param cur 词语
+     *
+     * @param cur        词语
      * @param wordNetAll 词网
-     * @param line 当前扫描的行数
-     * @param length 当前缓冲区的长度
+     * @param line       当前扫描的行数
+     * @param length     当前缓冲区的长度
      */
     private static void removeFromWordNet(Vertex cur, WordNet wordNetAll, int line, int length)
     {
@@ -531,9 +611,21 @@ public abstract class Segment
      */
     public List<List<Term>> seg2sentence(String text)
     {
+        return seg2sentence(text, true);
+    }
+
+    /**
+     * 分词断句 输出句子形式
+     *
+     * @param text     待分词句子
+     * @param shortest 是否断句为最细的子句（将逗号也视作分隔符）
+     * @return 句子列表，每个句子由一个单词列表组成
+     */
+    public List<List<Term>> seg2sentence(String text, boolean shortest)
+    {
         List<List<Term>> resultList = new LinkedList<List<Term>>();
         {
-            for (String sentence : SentencesUtil.toSentenceList(text))
+            for (String sentence : SentencesUtil.toSentenceList(text, shortest))
             {
                 resultList.add(segSentence(sentence.toCharArray()));
             }
@@ -639,11 +731,11 @@ public abstract class Segment
 
     /**
      * 是否尽可能强制使用用户词典（使用户词典的优先级尽可能高）<br>
-     *     警告：具体实现由各子类决定，可能会破坏分词器的统计特性（例如，如果用户词典
-     *     含有“和服”，则“商品和服务”的分词结果可能会被用户词典的高优先级影响）。
+     * 警告：具体实现由各子类决定，可能会破坏分词器的统计特性（例如，如果用户词典
+     * 含有“和服”，则“商品和服务”的分词结果可能会被用户词典的高优先级影响）。
+     *
      * @param enable
      * @return 分词器本身
-     *
      * @since 1.3.5
      */
     public Segment enableCustomDictionaryForcing(boolean enable)
@@ -694,7 +786,8 @@ public abstract class Segment
 
     /**
      * 是否启用数词和数量词识别<br>
-     *     即[二, 十, 一] => [二十一]，[十, 九, 元] => [十九元]
+     * 即[二, 十, 一] => [二十一]，[十, 九, 元] => [十九元]
+     *
      * @param enable
      * @return
      */
@@ -748,6 +841,7 @@ public abstract class Segment
 
     /**
      * 开启多线程
+     *
      * @param enable true表示开启[系统CPU核心数]个线程，false表示单线程
      * @return
      */
@@ -760,6 +854,7 @@ public abstract class Segment
 
     /**
      * 开启多线程
+     *
      * @param threadNumber 线程数量
      * @return
      */
