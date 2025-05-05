@@ -59,8 +59,23 @@ public class AhoCorasickDoubleArrayTrie<V>
      */
     protected int size;
 
+    /**
+     * 是否开启快速构建
+     */
+    private boolean enableFastBuild;
+
     public AhoCorasickDoubleArrayTrie()
     {
+    }
+
+    /**
+     * 开启快速构建，相比普通构建速度更快但内存占用微增，原理详见 https://github.com/hankcs/HanLP/issues/1801
+     *
+     * @param enableFastBuild 是否开启快速构建
+     */
+    public AhoCorasickDoubleArrayTrie(boolean enableFastBuild)
+    {
+        this.enableFastBuild = enableFastBuild;
     }
 
     /**
@@ -448,19 +463,19 @@ public class AhoCorasickDoubleArrayTrie<V>
     /**
      * c转移，如果是根节点则返回自己
      *
-     * @param nodePos
+     * @param from
      * @param c
      * @return
      */
-    protected int transitionWithRoot(int nodePos, char c)
+    protected int transitionWithRoot(int from, char c)
     {
-        int b = base[nodePos];
+        int b = base[from];
         int p;
 
         p = b + c + 1;
         if (b != check[p])
         {
-            if (nodePos == 0) return 0;
+            if (from == 0) return 0;
             return -1;
         }
 
@@ -817,7 +832,6 @@ public class AhoCorasickDoubleArrayTrie<V>
         private void constructFailureStates()
         {
             fail = new int[size + 1];
-            fail[1] = base[0];
             output = new int[size + 1][];
             Queue<State> queue = new LinkedBlockingDeque<State>();
 
@@ -881,7 +895,10 @@ public class AhoCorasickDoubleArrayTrie<V>
 
             List<Map.Entry<Integer, State>> siblings = new ArrayList<Map.Entry<Integer, State>>(root_node.getSuccess().entrySet().size());
             fetch(root_node, siblings);
-            insert(siblings);
+            if (siblings.isEmpty())
+                Arrays.fill(check, -1); // fill -1 such that no transition is allowed
+            else
+                insert(siblings);
         }
 
         /**
@@ -918,7 +935,7 @@ public class AhoCorasickDoubleArrayTrie<V>
         private int insert(List<Map.Entry<Integer, State>> siblings)
         {
             int begin = 0;
-            int pos = Math.max(siblings.get(0).getKey() + 1, nextCheckPos) - 1;
+            int pos = Math.max(siblings.get(0).getKey() + 1, enableFastBuild ? (nextCheckPos + 1) : nextCheckPos) - 1;
             int nonzero_num = 0;
             int first = 0;
 
@@ -1009,7 +1026,7 @@ public class AhoCorasickDoubleArrayTrie<V>
             base = nbase;
 
             int ncheck[] = new int[size + 65535];
-            System.arraycopy(check, 0, ncheck, 0, size);
+            System.arraycopy(check, 0, ncheck, 0, Math.min(check.length, ncheck.length));
             check = ncheck;
         }
     }

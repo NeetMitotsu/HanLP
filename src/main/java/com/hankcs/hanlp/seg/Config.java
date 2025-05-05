@@ -11,13 +11,15 @@
  */
 package com.hankcs.hanlp.seg;
 
+import com.hankcs.hanlp.HanLP;
+
 /**
  * 分词器配置项
  */
 public class Config
 {
     /**
-     * 是否是索引分词（合理地最小分割）
+     * 是否是索引分词（合理地最小分割），indexMode代表全切分词语的最小长度（包含）
      */
     public int indexMode = 0;
     /**
@@ -76,4 +78,19 @@ public class Config
     {
         ner = nameRecognize || translatedNameRecognize || japaneseNameRecognize || placeRecognize || organizationRecognize;
     }
+
+    /**
+     * 是否是索引模式
+     *
+     * @return
+     */
+    public boolean isIndexMode()
+    {
+        return indexMode > 0;
+    }
+
+    /**
+     * 是否执行字符正规化（繁体->简体，全角->半角，大写->小写），切换配置后必须删CustomDictionary.txt.bin缓存
+     */
+    public boolean normalization = HanLP.Config.Normalization;
 }

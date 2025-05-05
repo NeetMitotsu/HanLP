@@ -15,8 +15,8 @@
  */
 package com.hankcs.hanlp.collection.trie;
 
+import com.hankcs.hanlp.collection.AhoCorasick.AhoCorasickDoubleArrayTrie;
 import com.hankcs.hanlp.corpus.io.ByteArray;
-import com.hankcs.hanlp.corpus.io.ByteArrayOtherStream;
 import com.hankcs.hanlp.corpus.io.ByteArrayStream;
 import com.hankcs.hanlp.corpus.io.IOUtil;
 import com.hankcs.hanlp.utility.ByteUtil;
@@ -59,7 +59,6 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
     protected int check[];
     protected int base[];
 
-    private BitSet used;
     /**
      * base 和 check 的大小
      */
@@ -78,6 +77,11 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
     // int (*progressfunc_) (size_t, size_t);
 
     // inline _resize expanded
+
+    /**
+     * 是否开启快速构建
+     */
+    private boolean enableFastBuild;
 
     /**
      * 拓展数组
@@ -159,13 +163,13 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
      * @param siblings 等待插入的兄弟节点
      * @return 插入位置
      */
-    private int insert(List<Node> siblings)
+    private int insert(List<Node> siblings, BitSet used)
     {
         if (error_ < 0)
             return 0;
 
         int begin = 0;
-        int pos = Math.max(siblings.get(0).code + 1, nextCheckPos) - 1;
+        int pos = Math.max(siblings.get(0).code + 1, enableFastBuild ? (nextCheckPos + 1) : nextCheckPos) - 1;
         int nonzero_num = 0;
         int first = 0;
 
@@ -173,7 +177,7 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
             resize(pos + 1);
 
         outer:
-        // 此循环体的目标是找出满足base[begin + a1...an]  == 0的n个空闲空间,a1...an是siblings中的n个节点
+        // 此循环体的目标是找出满足check[begin + a1...an]  == 0的n个空闲空间,a1...an是siblings中的n个节点
         while (true)
         {
             pos++;
@@ -222,7 +226,7 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
 
         //used[begin] = true;
         used.set(begin);
-        
+
         size = (size > begin + siblings.get(siblings.size() - 1).code + 1) ? size
                 : begin + siblings.get(siblings.size() - 1).code + 1;
 
@@ -254,7 +258,7 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
             }
             else
             {
-                int h = insert(new_siblings);   // dfs
+                int h = insert(new_siblings, used);   // dfs
                 base[begin + siblings.get(i).code] = h;
 //                System.out.println(this);
             }
@@ -266,11 +270,34 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
     {
         check = null;
         base = null;
-        used = new BitSet();
         size = 0;
         allocSize = 0;
         // no_delete_ = false;
         error_ = 0;
+    }
+
+    /**
+     * 开启快速构建，相比普通构建速度更快但内存占用微增，原理详见 https://github.com/hankcs/HanLP/issues/1801
+     *
+     * @param enableFastBuild 是否开启快速构建
+     */
+    public DoubleArrayTrie(boolean enableFastBuild)
+    {
+        this();
+        this.enableFastBuild = enableFastBuild;
+    }
+
+    /**
+     * 从TreeMap构造
+     * @param buildFrom
+     */
+    public DoubleArrayTrie(TreeMap<String, V> buildFrom)
+    {
+        this();
+        if (build(buildFrom) != 0)
+        {
+            throw new IllegalArgumentException("构造失败");
+        }
     }
 
     // no deconstructor
@@ -287,7 +314,6 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
         // if (! no_delete_)
         check = null;
         base = null;
-        used = null;
         allocSize = 0;
         size = 0;
         // no_delete_ = false;
@@ -345,7 +371,10 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
         List<V> valueList = new ArrayList<V>(entrySet.size());
         for (Map.Entry<String, V> entry : entrySet)
         {
-            keyList.add(entry.getKey());
+            String key = entry.getKey();
+            if (key.isEmpty())
+                continue;
+            keyList.add(key);
             valueList.add(entry.getValue());
         }
 
@@ -377,7 +406,7 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
     public int build(List<String> _key, int _length[], int _value[],
                      int _keySize)
     {
-        if (_keySize > _key.size() || _key == null)
+        if (_key == null || _keySize > _key.size())
             return 0;
 
         // progress_func_ = progress_func;
@@ -386,6 +415,7 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
         keySize = _keySize;
         value = _value;
         progress = 0;
+        allocSize = 0;
 
         resize(65536 * 32); // 32个双字节
 
@@ -399,12 +429,12 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
 
         List<Node> siblings = new ArrayList<Node>();
         fetch(root_node, siblings);
-        insert(siblings);
+        insert(siblings, new BitSet());
+        shrink();
 
         // size += (1 << 8 * 2) + 1; // ???
         // if (size >= allocSize) resize (size);
 
-        used = null;
         key = null;
         length = null;
 
@@ -531,7 +561,6 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
             check[i] = byteArray.nextInt();
         }
         v = value;
-        used = null;    // 无用的对象,释放掉
         return true;
     }
 
@@ -557,7 +586,6 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
             offset += 4;
         }
         v = value;
-        used = null;    // 无用的对象,释放掉
         return true;
     }
 
@@ -1200,6 +1228,11 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
         }
     }
 
+    public Searcher getSearcher(String text)
+    {
+        return getSearcher(text, 0);
+    }
+
     public Searcher getSearcher(String text, int offset)
     {
         return new Searcher(offset, text.toCharArray());
@@ -1208,6 +1241,143 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
     public Searcher getSearcher(char[] text, int offset)
     {
         return new Searcher(offset, text);
+    }
+
+    /**
+     * 一个最长搜索工具（注意，当调用next()返回false后不应该继续调用next()，除非reset状态）
+     */
+    public class LongestSearcher
+    {
+        /**
+         * key的起点
+         */
+        public int begin;
+        /**
+         * key的长度
+         */
+        public int length;
+        /**
+         * key的字典序坐标
+         */
+        public int index;
+        /**
+         * key对应的value
+         */
+        public V value;
+        /**
+         * 传入的字符数组
+         */
+        private char[] charArray;
+        /**
+         * 上一个字符的下标
+         */
+        private int i;
+        /**
+         * charArray的长度，效率起见，开个变量
+         */
+        private int arrayLength;
+
+        /**
+         * 构造一个双数组搜索工具
+         *
+         * @param offset    搜索的起始位置
+         * @param charArray 搜索的目标字符数组
+         */
+        public LongestSearcher(int offset, char[] charArray)
+        {
+            this.charArray = charArray;
+            i = offset;
+            arrayLength = charArray.length;
+            begin = offset;
+        }
+
+        /**
+         * 取出下一个命中输出
+         *
+         * @return 是否命中，当返回false表示搜索结束，否则使用公开的成员读取命中的详细信息
+         */
+        public boolean next()
+        {
+            length = 0;
+            begin = i;
+            int b = base[0];
+            int n;
+            int p;
+
+            for (; ; ++i)
+            {
+                if (i >= arrayLength)               // 指针到头了，将起点往前挪一个，重新开始，状态归零
+                {
+                    return length > 0;
+                }
+                p = b + (int) (charArray[i]) + 1;   // 状态转移 p = base[char[i-1]] + char[i] + 1
+                if (b == check[p])                  // base[char[i-1]] == check[base[char[i-1]] + char[i] + 1]
+                    b = base[p];                    // 转移成功
+                else
+                {
+                    if (begin == arrayLength) break;
+                    if (length > 0)
+                    {
+                        i = begin + length;         // 输出最长词后，从该词语的下一个位置恢复扫描
+                        return true;
+                    }
+
+                    i = begin;                      // 转移失败，也将起点往前挪一个，重新开始，状态归零
+                    ++begin;
+                    b = base[0];
+                }
+                p = b;
+                n = base[p];
+                if (b == check[p] && n < 0)         // base[p] == check[p] && base[p] < 0 查到一个词
+                {
+                    length = i - begin + 1;
+                    index = -n - 1;
+                    value = v[index];
+                }
+            }
+
+            return false;
+        }
+    }
+
+    /**
+     * 全切分
+     *
+     * @param text      文本
+     * @param processor 处理器
+     */
+    public void parseText(String text, AhoCorasickDoubleArrayTrie.IHit<V> processor)
+    {
+        Searcher searcher = getSearcher(text, 0);
+        while (searcher.next())
+        {
+            processor.hit(searcher.begin, searcher.begin + searcher.length, searcher.value);
+        }
+    }
+
+    public LongestSearcher getLongestSearcher(String text, int offset)
+    {
+        return getLongestSearcher(text.toCharArray(), offset);
+    }
+
+    public LongestSearcher getLongestSearcher(char[] text, int offset)
+    {
+        return new LongestSearcher(offset, text);
+    }
+
+    /**
+     * 最长匹配
+     *
+     * @param text      文本
+     * @param processor 处理器
+     */
+    public void parseLongestText(String text, AhoCorasickDoubleArrayTrie.IHit<V> processor)
+    {
+        LongestSearcher searcher = getLongestSearcher(text, 0);
+        while (searcher.next())
+        {
+            processor.hit(searcher.begin, searcher.begin + searcher.length, searcher.value);
+        }
     }
 
     /**
@@ -1261,6 +1431,24 @@ public class DoubleArrayTrie<V> implements Serializable, ITrie<V>
     public V get(int index)
     {
         return v[index];
+    }
+
+    /**
+     * 释放空闲的内存
+     */
+    private void shrink()
+    {
+//        if (HanLP.Config.DEBUG)
+//        {
+//            System.err.printf("释放内存 %d bytes\n", base.length - size - 65535);
+//        }
+        int nbase[] = new int[size + 65535];
+        System.arraycopy(base, 0, nbase, 0, size);
+        base = nbase;
+
+        int ncheck[] = new int[size + 65535];
+        System.arraycopy(check, 0, ncheck, 0, size);
+        check = ncheck;
     }
 
 

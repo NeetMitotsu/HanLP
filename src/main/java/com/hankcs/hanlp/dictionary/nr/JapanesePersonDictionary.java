@@ -16,7 +16,6 @@ import com.hankcs.hanlp.collection.trie.DoubleArrayTrie;
 import com.hankcs.hanlp.corpus.io.ByteArray;
 import com.hankcs.hanlp.corpus.io.IOUtil;
 import com.hankcs.hanlp.dictionary.BaseSearcher;
-import com.hankcs.hanlp.dictionary.CoreDictionary;
 import com.hankcs.hanlp.utility.Predefine;
 
 import java.io.*;
@@ -54,7 +53,7 @@ public class JapanesePersonDictionary
             throw new IllegalArgumentException("日本人名词典" + path + "加载失败");
         }
 
-        logger.info("日本人名词典" + HanLP.Config.PinyinDictionaryPath + "加载成功，耗时" + (System.currentTimeMillis() - start) + "ms");
+        logger.info("日本人名词典" + HanLP.Config.JapanesePersonDictionaryPath + "加载成功，耗时" + (System.currentTimeMillis() - start) + "ms");
     }
 
     static boolean load()
@@ -95,7 +94,7 @@ public class JapanesePersonDictionary
     {
         try
         {
-            DataOutputStream out = new DataOutputStream(IOUtil.newOutputStream(path + Predefine.VALUE_EXT));
+            DataOutputStream out = new DataOutputStream(new BufferedOutputStream(IOUtil.newOutputStream(path + Predefine.VALUE_EXT)));
             out.writeInt(map.size());
             for (Character character : map.values())
             {
@@ -151,9 +150,9 @@ public class JapanesePersonDictionary
         return trie.get(key);
     }
 
-    public static BaseSearcher getSearcher(char[] charArray)
+    public static DoubleArrayTrie<Character>.LongestSearcher getSearcher(char[] charArray)
     {
-        return new Searcher(charArray, trie);
+        return trie.getLongestSearcher(charArray, 0);
     }
 
     /**

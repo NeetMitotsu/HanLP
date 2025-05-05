@@ -20,28 +20,13 @@ import java.util.regex.Pattern;
  */
 public class Predefine
 {
+    public static final String CHINESE_NUMBERS = "零○〇一二两三四五六七八九十廿百千万亿壹贰叁肆伍陆柒捌玖拾佰仟";
     /**
      * hanlp.properties的路径，一般情况下位于classpath目录中。
      * 但在某些极端情况下（不标准的Java虚拟机，用户缺乏相关知识等），允许将其设为绝对路径
      */
     public static String HANLP_PROPERTIES_PATH;
     public final static double MIN_PROBABILITY = 1e-10;
-    public final static int CT_SENTENCE_BEGIN = 1;        //Sentence begin
-    public final static int CT_SENTENCE_END = 4;          //Sentence ending
-    /** @deprecated 使用CharType中的相应常量 */
-    public final static int CT_SINGLE = 5;                //SINGLE byte
-    /** @deprecated 使用CharType中的相应常量 */
-    public final static int CT_DELIMITER = CT_SINGLE + 1; //delimiter
-    /** @deprecated 使用CharType中的相应常量 */
-    public final static int CT_CHINESE = CT_SINGLE + 2;   //Chinese Char
-    /** @deprecated 使用CharType中的相应常量 */
-    public final static int CT_LETTER = CT_SINGLE + 3;    //HanYu Pinyin
-    /** @deprecated 使用CharType中的相应常量 */
-    public final static int CT_NUM = CT_SINGLE + 4;       //HanYu Pinyin
-    /** @deprecated 使用CharType中的相应常量 */
-    public final static int CT_INDEX = CT_SINGLE + 5;     //HanYu Pinyin
-    /** @deprecated  */
-    public final static int CT_OTHER = CT_SINGLE + 12;    //Other
     /**
      * 浮点数正则
      */
@@ -57,42 +42,21 @@ public class Predefine
         "水库","隧道","特区","铁路","新村","雪峰","盐场","盐湖","渔场","直辖市",
         "自治区","自治县","自治州"};
 
-    //Translation type
-    public static int TT_ENGLISH = 0;
-    public static int TT_RUSSIAN = 1;
-    public static int TT_JAPANESE = 2;
-
-    //Seperator type
-    public static String SEPERATOR_C_SENTENCE = "。！？：；…";
-    public static String SEPERATOR_C_SUB_SENTENCE = "、，（）“”‘’";
-    public static String SEPERATOR_E_SENTENCE = "!?:;";
-    public static String SEPERATOR_E_SUB_SENTENCE = ",()*'";
-    //注释：原来程序为",()\042'"，"\042"为10进制42好ASC字符，为*
-    public static String SEPERATOR_LINK = "\n\r 　";
-
-    //Seperator between two words
-    public static String WORD_SEGMENTER = "@";
-
-    public static int CC_NUM = 6768;
-
-    //The number of Chinese Char,including 5 empty position between 3756-3761
-    public static int WORD_MAXLENGTH = 100;
-    public static int WT_DELIMITER = 0;
-    public static int WT_CHINESE = 1;
-    public static int WT_OTHER = 2;
-
-    public static int MAX_WORDS = 650;
     public static int MAX_SEGMENT_NUM = 10;
 
-    public static final int MAX_FREQUENCY = 25146057; // 现在总词频25146057
+    public static int TOTAL_FREQUENCY = 25146057; // 现在总词频25146057
     /**
-     * Smoothing 平滑因子
+     * 未登录词的默认词频
      */
-    public static final double dTemp = (double) 1 / MAX_FREQUENCY + 0.00001;
+    public static int OOV_DEFAULT_FREQUENCY = 10000;
     /**
-     * 平滑参数
+     * Bigram 平滑因子
      */
-    public static final double dSmoothingPara = 0.1;
+    public static double myu = 1 - (double) 1 / TOTAL_FREQUENCY + 0.00001;
+    /**
+     * Unigram 平滑因子
+     */
+    public static final double lambda = 0.9;
     /**
      * 地址 ns
      */
@@ -165,4 +129,11 @@ public class Predefine
      * 二进制文件后缀
      */
     public final static String BIN_EXT = ".bin";
+
+    public static void setTotalFrequency(int totalFrequency)
+    {
+        TOTAL_FREQUENCY = totalFrequency;
+        myu = 1 - ((double) 1 / TOTAL_FREQUENCY + 0.00001);
+        OOV_DEFAULT_FREQUENCY = Math.max(1, Math.min(OOV_DEFAULT_FREQUENCY / 100, TOTAL_FREQUENCY)); // 默认百分之一
+    }
 }
